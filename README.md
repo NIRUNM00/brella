@@ -172,9 +172,41 @@ Brella 记录偏好 ✅ 记住了 + 更新 Wilson 分数
 
 ## 当前状态
 
-**开发阶段 · 第 1 周** → 基建搭建中
+**Phase 1 ✅ — B→D→D 协议引擎已就绪**
 
-协议引擎、SQLite 记忆层、CLI、Bad 层检测管线正在落地。详见下方进度路线图。
+- ✅ 协议引擎：Briefing 生成器 / Detail 检索层 / Decision 记录层
+- ✅ Wilson Score 置信度加权排序引擎
+- ✅ SQLite 跨批次记忆（4 表 schema，WAL 模式）
+- ✅ CLI 6 条命令全端到端打通
+- ⬜ Phase 2：Bad 层检测管线（HandEval 集成）
+- ⬜ Phase 3：ComfyUI 自定义节点
+
+---
+
+## CLI 使用
+
+```bash
+# 初始化数据库
+brella init
+
+# 加载图像目录生成简报
+brella curate ./output --tag batch-01
+
+# 记录决策（记录后 Wilson Score 自动更新）
+brella decide 42 accept -p "cute cat" -n "good composition"
+brella decide 7 reject -p "weird face" -n "hand anomaly"
+
+# 查看 Wilson Score 排名
+brella stats --top 10
+
+# 查看某张种子的决策历史
+brella detail 42
+
+# 查看整体统计简报
+brella brief
+```
+
+> 所有决策记录持久化在 `brella.db`，下次打开自动加载。
 
 ---
 

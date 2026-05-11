@@ -14,9 +14,9 @@ CREATE TABLE IF NOT EXISTS seed_preferences (
     UNIQUE(seed, prompt, batch_tag, created_at)
 );
 
-CREATE INDEX idx_seed_pref_seed ON seed_preferences(seed);
-CREATE INDEX idx_seed_pref_prompt ON seed_preferences(prompt);
-CREATE INDEX idx_seed_pref_batch ON seed_preferences(batch_tag);
+CREATE INDEX IF NOT EXISTS idx_seed_pref_seed ON seed_preferences(seed);
+CREATE INDEX IF NOT EXISTS idx_seed_pref_prompt ON seed_preferences(prompt);
+CREATE INDEX IF NOT EXISTS idx_seed_pref_batch ON seed_preferences(batch_tag);
 
 CREATE TABLE IF NOT EXISTS prompt_archetypes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS image_metadata (
     UNIQUE(seed, prompt, batch_tag)
 );
 
-CREATE INDEX idx_meta_seed ON image_metadata(seed);
-CREATE INDEX idx_meta_batch ON image_metadata(batch_tag);
+CREATE INDEX IF NOT EXISTS idx_meta_seed ON image_metadata(seed);
+CREATE INDEX IF NOT EXISTS idx_meta_batch ON image_metadata(batch_tag);
 
 CREATE TABLE IF NOT EXISTS wilson_scores (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,5 +60,5 @@ CREATE TABLE IF NOT EXISTS wilson_scores (
     UNIQUE(seed, prompt, model)
 );
 
-CREATE INDEX idx_wilson_score ON wilson_scores(score DESC);
-CREATE INDEX idx_wilson_seed ON wilson_scores(seed);
+CREATE INDEX IF NOT EXISTS idx_wilson_score ON wilson_scores(score DESC);
+CREATE INDEX IF NOT EXISTS idx_wilson_seed ON wilson_scores(seed);
