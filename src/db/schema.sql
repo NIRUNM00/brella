@@ -1,0 +1,64 @@
+-- Brella 跨批次记忆
+-- SQLite schema v1
+
+CREATE TABLE IF NOT EXISTS seed_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seed INTEGER NOT NULL,
+    prompt TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL CHECK(action IN ('accept', 'reject', 'skip')),
+    note TEXT DEFAULT '',
+    batch_tag TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    -- 同 seed+prompt 可有多条记录 (历史追踪)
+    UNIQUE(seed, prompt, batch_tag, created_at)
+);
+
+CREATE INDEX idx_seed_pref_seed ON seed_preferences(seed);
+CREATE INDEX idx_seed_pref_prompt ON seed_preferences(prompt);
+CREATE INDEX idx_seed_pref_batch ON seed_preferences(batch_tag);
+
+CREATE TABLE IF NOT EXISTS prompt_archetypes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prompt_hash TEXT NOT NULL UNIQUE,
+    prompt TEXT NOT NULL,
+    archetype TEXT NOT NULL DEFAULT '',
+    preferred_seeds TEXT DEFAULT '[]',  -- JSON array of seeds
+    rejected_seeds TEXT DEFAULT '[]',
+    total_judgments INTEGER NOT NULL DEFAULT 0,
+    last_updated TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS image_metadata (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seed INTEGER NOT NULL,
+    prompt TEXT NOT NULL,
+    cfg REAL NOT NULL DEFAULT 7.0,
+    model TEXT NOT NULL DEFAULT '',
+    batch_tag TEXT NOT NULL DEFAULT '',
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    file_path TEXT NOT NULL DEFAULT '',
+    file_size INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(seed, prompt, batch_tag)
+);
+
+CREATE INDEX idx_meta_seed ON image_metadata(seed);
+CREATE INDEX idx_meta_batch ON image_metadata(batch_tag);
+
+CREATE TABLE IF NOT EXISTS wilson_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seed INTEGER NOT NULL,
+    prompt TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    ups INTEGER NOT NULL DEFAULT 0,      -- accept count
+    downs INTEGER NOT NULL DEFAULT 0,    -- reject count
+    score REAL NOT NULL DEFAULT 0.5,     -- Wilson lower bound
+    confidence REAL NOT NULL DEFAULT 0,  -- total judgments
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(seed, prompt, model)
+);
+
+CREATE INDEX idx_wilson_score ON wilson_scores(score DESC);
+CREATE INDEX idx_wilson_seed ON wilson_scores(seed);
