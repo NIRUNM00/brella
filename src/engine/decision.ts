@@ -74,13 +74,13 @@ export function getDecisionHistory(
   if (prompt) {
     rows = db
       .prepare(
-        "SELECT * FROM seed_preferences WHERE seed = ? AND prompt = ? ORDER BY created_at DESC",
+        "SELECT * FROM seed_preferences WHERE seed = ? AND prompt = ? ORDER BY created_at DESC, id DESC",
       )
       .all(seed, prompt);
   } else {
     rows = db
       .prepare(
-        "SELECT * FROM seed_preferences WHERE seed = ? ORDER BY created_at DESC",
+        "SELECT * FROM seed_preferences WHERE seed = ? ORDER BY created_at DESC, id DESC",
       )
       .all(seed);
   }
