@@ -1,13 +1,26 @@
 import Database from "better-sqlite3";
 
-
-
 let db: Database.Database | null = null;
+let currentPath: string | null = null;
+let lastExplicitPath: string | null = null;
 
 export function getDb(dbPath?: string): Database.Database {
+  const resolved = dbPath ?? lastExplicitPath ?? process.cwd() + "/brella.db";
+
+  // If path differs from current, close and reopen
+  if (db && currentPath !== null && resolved !== currentPath) {
+    db.close();
+    db = null;
+    currentPath = null;
+  }
+
   if (db) return db;
 
-  const resolved = dbPath ?? process.cwd() + "/brella.db";
+  // Track the last explicitly requested path so internal callers (no arg)
+  // stay within the same DB session
+  if (dbPath) lastExplicitPath = resolved;
+
+  currentPath = resolved;
   db = new Database(resolved);
 
   // Enable WAL for better concurrent read performance
@@ -26,9 +39,7 @@ CREATE TABLE IF NOT EXISTS seed_preferences (
     action TEXT NOT NULL CHECK(action IN ('accept', 'reject', 'skip')),
     note TEXT DEFAULT '',
     batch_tag TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    -- 同 seed+prompt 可有多条记录 (历史追踪)
-    UNIQUE(seed, prompt, batch_tag, created_at)
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_seed_pref_seed ON seed_preferences(seed);
@@ -45,6 +56,8 @@ CREATE TABLE IF NOT EXISTS prompt_archetypes (
     total_judgments INTEGER NOT NULL DEFAULT 0,
     last_updated TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_archetype_type ON prompt_archetypes(archetype);
 
 CREATE TABLE IF NOT EXISTS image_metadata (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,5 +101,7 @@ export function closeDb(): void {
   if (db) {
     db.close();
     db = null;
+    currentPath = null;
+    lastExplicitPath = null;
   }
 }

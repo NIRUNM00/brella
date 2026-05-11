@@ -1,6 +1,7 @@
 import type { DecisionAction, DecisionRecord, DecisionResult } from "../types/bddd.js";
 import { getDb } from "../db/connection.js";
 import { wilsonLowerBound } from "../scoring/wilson.js";
+import { associateDecision } from "./archetypes.js";
 
 export interface DecisionInput {
   seed: number;
@@ -31,6 +32,9 @@ export function recordDecision(input: DecisionInput): DecisionRecord {
 
   // 更新 Wilson Score
   updateWilsonScore(input.seed, input.prompt, model);
+
+  // 更新 Archetype 关联
+  associateDecision(input.prompt, input.seed, input.action);
 
   return {
     seed: input.seed,
@@ -108,6 +112,120 @@ export function getWilsonTopN(n: number = 10): Array<{
   }));
 }
 
+// ---------- Batch Queries ----------
+
+export interface BatchStats {
+  batchTag: string;
+  total: number;
+  accepted: number;
+  rejected: number;
+  skipped: number;
+  uniqueSeeds: number;
+}
+
+/**
+ * Get all decisions for a batch tag
+ */
+export function getDecisionsByBatchTag(batchTag: string): DecisionRecord[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      "SELECT * FROM seed_preferences WHERE batch_tag = ? ORDER BY created_at DESC",
+    )
+    .all(batchTag) as any[];
+  return rows.map(asDecisionRecord);
+}
+
+/**
+ * Get all decisions for a model
+ */
+export function getDecisionsByModel(model: string): DecisionRecord[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      "SELECT * FROM seed_preferences WHERE model = ? ORDER BY created_at DESC",
+    )
+    .all(model) as any[];
+  return rows.map(asDecisionRecord);
+}
+
+/**
+ * Get all decisions filtered by action
+ */
+export function getDecisionsByAction(
+  action: "accept" | "reject" | "skip",
+): DecisionRecord[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      "SELECT * FROM seed_preferences WHERE action = ? ORDER BY created_at DESC",
+    )
+    .all(action) as any[];
+  return rows.map(asDecisionRecord);
+}
+
+/**
+ * Get aggregated stats for a batch
+ */
+export function getBatchStats(batchTag: string): BatchStats | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT
+        batch_tag,
+        COUNT(*) as total,
+        SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) as accepted,
+        SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) as rejected,
+        SUM(CASE WHEN action = 'skip' THEN 1 ELSE 0 END) as skipped,
+        COUNT(DISTINCT seed) as uniqueSeeds
+      FROM seed_preferences
+      WHERE batch_tag = ?
+      GROUP BY batch_tag`,
+    )
+    .get(batchTag) as any;
+
+  if (!row) return null;
+  return {
+    batchTag: row.batch_tag,
+    total: row.total,
+    accepted: row.accepted,
+    rejected: row.rejected,
+    skipped: row.skipped,
+    uniqueSeeds: row.uniqueSeeds,
+  };
+}
+
+/**
+ * List all batch tags with stats
+ */
+export function listBatchTags(): BatchStats[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT
+        batch_tag,
+        COUNT(*) as total,
+        SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) as accepted,
+        SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) as rejected,
+        SUM(CASE WHEN action = 'skip' THEN 1 ELSE 0 END) as skipped,
+        COUNT(DISTINCT seed) as uniqueSeeds
+      FROM seed_preferences
+      WHERE batch_tag != ''
+      GROUP BY batch_tag
+      ORDER BY MAX(created_at) DESC`,
+    )
+    .all() as any[];
+
+  return rows.map((r: any) => ({
+    batchTag: r.batch_tag,
+    total: r.total,
+    accepted: r.accepted,
+    rejected: r.rejected,
+    skipped: r.skipped,
+    uniqueSeeds: r.uniqueSeeds,
+  }));
+}
+
 function updateWilsonScore(seed: number, prompt: string, model: string): void {
   const db = getDb();
   const stats = db
@@ -143,6 +261,7 @@ function asDecisionRecord(row: any): DecisionRecord {
     model: row.model ?? "",
     action: row.action as DecisionAction,
     note: row.note ?? "",
+    batchTag: row.batch_tag ?? "",
     createdAt: row.created_at,
   };
 }

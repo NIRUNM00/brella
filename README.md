@@ -126,14 +126,15 @@ Brella 记录偏好 ✅ 记住了 + 更新 Wilson 分数
 
 ---
 
-## MVP 范围（约 6 周）
+## MVP 范围（第 1 版） ✅
 
-| 阶段 | 内容 | 交付 |
-|------|------|------|
-| W1-2 | B→D→D 协议核心 + 终端 UI | CLI 可用，支持手动加载目录 → 分层 → 决策 |
-| W3-4 | 跨批次记忆 SQLite schema + CRUD | 种子偏好持久化，跨 session 生效 |
-| W5-6 | ComfyUI 自定义节点集成 | 节点读取 PNG 元数据 + 调用 Brella 引擎 |
-| 并行 | Bad 层检测管道 | **优先集成 HandEval**（手部解剖检测，避免自训练开销与精度风险） + 面部结构检测 + 构图/曝光基础评分 |
+| 阶段 | 内容 | 交付 | 状态 |
+|------|------|------|------|
+| Phase 1 | B→D→D 协议核心 + 终端 UI | CLI 可用，支持手动加载目录 → 分层 → 决策 | ✅ |
+| Phase 2 | 跨批次记忆 SQLite schema + CRUD + 单元测试（62 tests） | 种子偏好持久化，跨 session 生效 | ✅ |
+| Phase 3 | Bad 层检测管线（HandEval 级检测 + 面部+构图/曝光）+ 三层分类 | 按 Bad/Dubious/Desired 分层输出 | ✅ |
+| Phase 4 | ComfyUI 自定义节点集成 | 节点读取 PNG 元数据 + 调用 Brella 引擎 | ✅ |
+| 收尾 | 一键安装脚本 + 使用文档 | `scripts/install.sh` + `docs/usage.md` | ✅ |
 
 **非 MVP 范围**：摄影适配层、云端部署、团队协作、AI 自动拒绝
 
@@ -170,16 +171,25 @@ Brella 记录偏好 ✅ 记住了 + 更新 Wilson 分数
 
 ---
 
-## 当前状态
+## 当前状态 🎉
 
-**Phase 1 ✅ — B→D→D 协议引擎已就绪**
+**🏁 v0.1.0-alpha — MVP 全部完成**
 
-- ✅ 协议引擎：Briefing 生成器 / Detail 检索层 / Decision 记录层
-- ✅ Wilson Score 置信度加权排序引擎
-- ✅ SQLite 跨批次记忆（4 表 schema，WAL 模式）
-- ✅ CLI 6 条命令全端到端打通
-- ⬜ Phase 2：Bad 层检测管线（HandEval 集成）
-- ⬜ Phase 3：ComfyUI 自定义节点
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 1 | B→D→D 协议引擎（Briefing/Detail/Decision）+ Wilson Score | ✅ 完成 |
+| Phase 2 | 跨批次记忆 + Prompt 原型 + 单元测试（62 tests） | ✅ 完成 |
+| Phase 3 | Bad 层检测管线（手部/面部/构图/曝光）+ 三层分类 | ✅ 完成 |
+| Phase 4 | ComfyUI 自定义节点 + PNG 元数据读取 + `brella classify` CLI | ✅ 完成 |
+| 收尾 | 安装脚本 + 使用文档 | ✅ 完成 |
+
+```bash
+# 一键安装
+bash scripts/install.sh
+
+# 验证
+brella init && brella -h
+```
 
 ---
 
@@ -196,6 +206,9 @@ brella curate ./output --tag batch-01
 brella decide 42 accept -p "cute cat" -n "good composition"
 brella decide 7 reject -p "weird face" -n "hand anomaly"
 
+# 决策时关联原型标签
+brella decide 42 accept -p "cute cat" -a portrait
+
 # 查看 Wilson Score 排名
 brella stats --top 10
 
@@ -204,9 +217,20 @@ brella detail 42
 
 # 查看整体统计简报
 brella brief
+
+# Prompt 原型管理
+brella archetype set "cute cat" portrait
+brella archetype get "cute cat"
+brella archetype list
+brella archetype search portrait
+
+# 单图检测管线的完整结果（JSON，供 ComfyUI 节点使用）
+brella classify ./image.png --pretty
 ```
 
 > 所有决策记录持久化在 `brella.db`，下次打开自动加载。
+>
+> 详细使用指南见 [`docs/usage.md`](docs/usage.md)
 
 ---
 

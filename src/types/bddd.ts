@@ -116,6 +116,8 @@ export interface DecisionRecord {
   action: DecisionAction;
   /** 用户备注 (可选) */
   note?: string;
+  /** 批次标识 */
+  batchTag?: string;
   createdAt: string;
 }
 
