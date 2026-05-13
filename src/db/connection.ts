@@ -1,10 +1,22 @@
 import Database from "better-sqlite3";
+import { getConfig } from "../config/index.js";
 
 let db: Database.Database | null = null;
 let currentPath: string | null = null;
 let lastExplicitPath: string | null = null;
 
+/**
+ * 获取数据库连接。
+ *
+ * 有参 dbPath 会临时打开指定数据库（测试用）；
+ * 无参则走 config 模块加载的配置（env → 配置文件 → 默认值）。
+ */
 export function getDb(dbPath?: string): Database.Database {
+  // 无参 → 从 config 模块获取
+  if (dbPath === undefined) {
+    dbPath = getConfig().dbPath;
+  }
+
   const resolved = dbPath ?? lastExplicitPath ?? process.cwd() + "/brella.db";
 
   // If path differs from current, close and reopen

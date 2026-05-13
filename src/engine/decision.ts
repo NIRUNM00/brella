@@ -254,6 +254,120 @@ function updateWilsonScore(seed: number, prompt: string, model: string): void {
   ).run(seed, prompt, model, ups, downs, score, confidence);
 }
 
+// ---------- Per-model Wilson ranking ----------
+
+export interface ModelRanking {
+  model: string;
+  ups: number;
+  downs: number;
+  score: number;
+  confidence: number;
+  seedCount: number;
+}
+
+/**
+ * Get per-model Wilson rankings, optionally filtered by prompt
+ */
+export function getModelRankings(promptFilter?: string): ModelRanking[] {
+  const db = getDb();
+
+  const query = promptFilter
+    ? `SELECT model,
+         SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) as ups,
+         SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) as downs,
+         COUNT(DISTINCT seed) as seedCount
+       FROM seed_preferences
+       WHERE model != '' AND prompt = ?
+       GROUP BY model`
+    : `SELECT model,
+         SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) as ups,
+         SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) as downs,
+         COUNT(DISTINCT seed) as seedCount
+       FROM seed_preferences
+       WHERE model != ''
+       GROUP BY model`;
+
+  const rows = promptFilter
+    ? db.prepare(query).all(promptFilter) as any[]
+    : db.prepare(query).all() as any[];
+
+  const rankings = rows.map((r: any) => ({
+    model: r.model,
+    ups: r.ups || 0,
+    downs: r.downs || 0,
+    score: wilsonLowerBound(r.ups || 0, r.downs || 0),
+    confidence: (r.ups || 0) + (r.downs || 0),
+    seedCount: r.seedCount || 0,
+  }));
+
+  // Sort by Wilson score descending
+  rankings.sort((a, b) => b.score - a.score);
+  return rankings;
+}
+
+// ---------- Overall summary ----------
+
+export interface OverallSummary {
+  totalDecisions: number;
+  totalAccepted: number;
+  totalRejected: number;
+  totalSkipped: number;
+  acceptRate: number | null;
+  modelCount: number;
+  modelNames: string[];
+  topModel: string | null;
+  topModelScore: number | null;
+}
+
+/**
+ * Get overall statistics summary
+ */
+export function getOverallSummary(): OverallSummary {
+  const db = getDb();
+
+  const totalRow = db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) as accepted,
+      SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) as rejected,
+      SUM(CASE WHEN action = 'skip' THEN 1 ELSE 0 END) as skipped
+    FROM seed_preferences
+  `).get() as any;
+
+  const modelNames = (db.prepare(`
+    SELECT DISTINCT model FROM seed_preferences WHERE model != '' ORDER BY model
+  `).all() as any[]).map((r: any) => r.model).filter(Boolean);
+
+  // Wilson per model to find top
+  const modelStats = modelNames.map(name => {
+    const row = db.prepare(`
+      SELECT
+        SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) as ups,
+        SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) as downs
+      FROM seed_preferences WHERE model = ?
+    `).get(name) as any;
+    return { name, ups: row.ups || 0, downs: row.downs || 0 };
+  });
+
+  const withScore = modelStats.map(m => ({
+    ...m,
+    score: wilsonLowerBound(m.ups, m.downs),
+  }));
+  withScore.sort((a, b) => b.score - a.score);
+
+  return {
+    totalDecisions: totalRow.total,
+    totalAccepted: totalRow.accepted,
+    totalRejected: totalRow.rejected,
+    totalSkipped: totalRow.skipped,
+    acceptRate: totalRow.total > 0 ? totalRow.accepted / totalRow.total : null,
+    modelCount: modelNames.length,
+    modelNames,
+    topModel: withScore.length > 0 ? withScore[0].name : null,
+    topModelScore: withScore.length > 0 ? withScore[0].score : null,
+  };
+}
+
 function asDecisionRecord(row: any): DecisionRecord {
   return {
     seed: row.seed,

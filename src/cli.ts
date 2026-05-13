@@ -14,7 +14,11 @@ const program = new Command();
 program
   .name("brella")
   .description("AI 出片策展 Agent — 筛选、记忆、决策")
-  .version(pkg.version);
+  .version(pkg.version)
+  // ★ 全局配置选项：所有子命令共用
+  .option("--db <path>", "指定数据库文件路径（覆盖 env BRELLA_DB_PATH/DB_PATH 和配置文件）")
+  .option("--config <path>", "指定配置文件路径（覆盖 env BRELLA_CONFIG）")
+  .option("--port <port>", "指定 API 端口（覆盖 env BRELLA_PORT/PORT）", parseInt);
 
 // ---------- curate: 加载目录 → 分层简报 ----------
 program
@@ -24,6 +28,10 @@ program
   .option("-t, --tag <tag>", "批次标识")
   .option("-a, --alpha <alpha>", "Wilson Score α 参数", parseFloat, 0.05)
   .action(async (dir, opts) => {
+    // 应用全局 DB 配置
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("🫂 Brella — 开始策展"));
     console.log(`  目录: ${dir}`);
     console.log(`  批次: ${opts.tag ?? "auto"}`);
@@ -84,6 +92,9 @@ program
   .description("查看最新简报")
   .option("-i, --id <batchId>", "指定批次 ID")
   .action(async (opts) => {
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("📋 Brella — 简报"));
     const { getDb } = await import("./db/connection.js");
     const db = getDb();
@@ -111,6 +122,9 @@ program
   .argument("<identifier>", "种子号或文件名")
   .option("-b, --batch <batchId>", "所属批次")
   .action(async (ident, opts) => {
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("🔍 Brella — 详情"));
     const { getDb } = await import("./db/connection.js");
     const db = getDb();
@@ -173,6 +187,9 @@ program
   .option("-n, --note <note>", "备注")
   .option("-a, --archetype <label>", "关联原型标签（自动标记）")
   .action(async (seed, action, opts) => {
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     const valid = ["accept", "reject", "skip"];
     if (!valid.includes(action)) {
       console.error(chalk.red(`无效决策: ${action}，需为 accept / reject / skip`));
@@ -204,11 +221,19 @@ program
   .description("查看记忆统计 / Wilson Score 排名")
   .option("--top <n>", "显示前 N 名", parseInt, 10)
   .action(async (opts) => {
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("📊 Brella — 统计"));
     const { getWilsonTopN } = await import("./engine/decision.js");
     const { getDb } = await import("./db/connection.js");
     const db = getDb();
-    console.log(chalk.dim(`  数据库: ${db.name}`));
+
+    // 从 config 模块获取实际路径展示
+    const { getConfig } = await import("./config/index.js");
+    const cfg = getConfig();
+
+    console.log(chalk.dim(`  数据库: ${cfg.dbPath}`));
     const top = getWilsonTopN(opts.top);
     if (top.length === 0) {
       console.log(chalk.yellow("  暂无评分数据，跑一次 brella decide 来生成"));
@@ -221,15 +246,45 @@ program
     }
   });
 
-// ---------- init: 初始化数据库 ----------
+// ---------- init: 初始化数据库或生成配置 ----------
 program
   .command("init")
-  .description("初始化 Brella 数据库")
-  .action(async () => {
+  .description("初始化 Brella 数据库或生成配置模板")
+  .option("--gen", "生成 .brellarc 配置模板文件（不初始化数据库）")
+  .action(async (opts) => {
+    if (opts.gen) {
+      // ── 生成配置模板 ──
+      console.log(chalk.cyan("📄 Brella — 生成配置模板"));
+      const { resolve, dirname } = await import("node:path");
+      const { existsSync, copyFileSync } = await import("node:fs");
+      const cwd = process.cwd();
+      const target = resolve(cwd, ".brellarc");
+      const examplePath = resolve(dirname(fileURLToPath(import.meta.url)), "../.brellarc.example");
+      if (existsSync(target)) {
+        console.log(chalk.yellow(`  ⚠️  ${target} 已存在，跳过`));
+        console.log(chalk.dim("  如需覆盖请手动删除后再运行"));
+        return;
+      }
+      if (!existsSync(examplePath)) {
+        console.log(chalk.red(`  ❌ 模板文件不存在: ${examplePath}`));
+        process.exit(1);
+      }
+      copyFileSync(examplePath, target);
+      console.log(chalk.green(`  ✅ 已生成: ${target}`));
+      console.log(chalk.dim("  编辑后启动: ./start_brella.sh"));
+      return;
+    }
+
+    // ── 初始化数据库（原有逻辑） ──
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("🔧 Brella — 初始化"));
     const { getDb } = await import("./db/connection.js");
     const db = getDb();
-    console.log(chalk.green(`  ✅ 数据库已初始化: ${db.name}`));
+    const { getConfig } = await import("./config/index.js");
+    const cfg = getConfig();
+    console.log(chalk.green(`  ✅ 数据库已初始化: ${cfg.dbPath}`));
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as any[];
     console.log(chalk.dim(`  表: ${tables.map((t: any) => t.name).join(", ")}`));
   });
@@ -245,6 +300,9 @@ archetype
   .argument("<prompt>", "prompt 文本")
   .argument("<label>", "原型标签名（如 portrait, landscape, nsfw 等）")
   .action(async (prompt, label) => {
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("🏷️  Brella — 设置原型"));
     const { setArchetype } = await import("./engine/archetypes.js");
     const entry = setArchetype(prompt, label);
@@ -258,6 +316,9 @@ archetype
   .description("查询某 prompt 的原型信息")
   .argument("<prompt>", "prompt 文本")
   .action(async (prompt) => {
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("🔎 Brella — 查询原型"));
     const { getArchetype } = await import("./engine/archetypes.js");
     const entry = getArchetype(prompt);
@@ -277,6 +338,9 @@ archetype
   .command("list")
   .description("列出所有原型分类及统计")
   .action(async () => {
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("📋 Brella — 原型列表"));
     const { listArchetypes, getAllArchetypes } = await import("./engine/archetypes.js");
     const summaries = listArchetypes();
@@ -302,6 +366,9 @@ archetype
   .description("搜索 prompt 或原型标签")
   .argument("<query>", "搜索关键词")
   .action(async (query) => {
+    const parentOpts = program.opts();
+    await applyGlobalConfig(parentOpts);
+
     console.log(chalk.cyan("🔍 Brella — 搜索原型"));
     const { searchArchetypes } = await import("./engine/archetypes.js");
     const results = searchArchetypes(query);
@@ -327,6 +394,9 @@ program
   .option("--comp-threshold <n>", "构图评分布疑阈值", parseFloat, 0.5)
   .option("--exp-threshold <n>", "曝光评分布疑阈值", parseFloat, 0.3)
   .action(async (imagePath, opts) => {
+    // classify 不需要 DB，但也允许全局 --db 以防后续扩展读取元数据
+    await applyGlobalConfig(program.opts());
+
     const { existsSync, statSync } = await import("node:fs");
 
     // 验证文件存在
@@ -402,5 +472,31 @@ program
       process.exit(1);
     }
   });
+
+/**
+ * 应用全局配置（--db / --config）
+ * 在所有命令的 action 开头调用
+ */
+async function applyGlobalConfig(opts: Record<string, any>): Promise<void> {
+  const { setConfigOverrides } = await import("./config/index.js");
+
+  // 优先：--db 参数
+  if (opts.db) {
+    setConfigOverrides({ dbPath: resolve(process.cwd(), opts.db) });
+    return;
+  }
+
+  // --config: 告知 config 模块从指定路径加载
+  // 但 config 模块已经自动扫描了；如果用户指定了 --config，
+  // 我们在这里设个环境变量让 config 模块重新加载时找到它
+  if (opts.config) {
+    process.env["BRELLA_CONFIG"] = resolve(process.cwd(), opts.config);
+    // 重置 config 缓存以便重新加载
+    const { resetConfig } = await import("./config/index.js");
+    resetConfig();
+    const { getConfig } = await import("./config/index.js");
+    getConfig(); // 触发重新加载
+  }
+}
 
 program.parse();

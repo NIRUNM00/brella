@@ -8,10 +8,13 @@
     "brella": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && rm -rf dist/api/public && cp -r src/api/public dist/api/",
     "start": "node dist/cli.js",
     "serve": "node dist/api/server.js",
+    "serve:prod": "node dist/api/server.js --port 8898 --db /opt/data/workspace/brella.db",
+    "serve:daemon": "nohup node dist/api/server.js --port 8898 --db /opt/data/workspace/brella.db > /opt/data/logs/brella.log 2>&1 &",
     "dev": "tsx watch src/cli.ts",
+    "dev:server": "tsx watch src/api/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

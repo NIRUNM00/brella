@@ -4,9 +4,15 @@ import { extname, join, basename } from "node:path";
 import { ClassificationPipeline } from "../pipeline/classify.js";
 import {
   recordDecision,
+  recordDecisions,
   getWilsonTopN,
   getDecisionHistory,
   listBatchTags,
+  getModelRankings,
+  getOverallSummary,
+  getDecisionsByAction,
+  getDecisionsByBatchTag,
+  getDecisionsByModel,
 } from "../engine/decision.js";
 import type { ImageMeta } from "../types/bddd.js";
 
@@ -197,6 +203,126 @@ export function createRouter() {
     try {
       const tags = listBatchTags();
       res.json({ batches: tags });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // ---------- GET /v1/summary ----------
+  // 全局概览统计（总决策、采纳率、模型数、最佳模型等）
+  router.get("/summary", (_req: Request, res: Response) => {
+    try {
+      const summary = getOverallSummary();
+      res.json(summary);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // ---------- POST /v1/decide/batch ----------
+  // 批量决策。接受 decisions 数组，每个元素含 seed, prompt, action, model, batch_tag
+  router.post("/decide/batch", (req: Request, res: Response) => {
+    try {
+      const { decisions } = req.body;
+      if (!Array.isArray(decisions) || decisions.length === 0) {
+        return res.status(400).json({ error: "decisions array is required" });
+      }
+
+      const inputs = decisions.map((d: any, i: number) => {
+        if (d.seed === undefined || !d.prompt || !d.action) {
+          throw new Error(`Item ${i}: seed, prompt, and action are required`);
+        }
+        if (!["accept", "reject", "skip"].includes(d.action)) {
+          throw new Error(`Item ${i}: action must be accept, reject, or skip`);
+        }
+        return {
+          seed: Number(d.seed),
+          prompt: d.prompt,
+          action: d.action,
+          model: d.model || undefined,
+          note: d.note || undefined,
+          batchTag: d.batch_tag || d.batchTag || undefined,
+        };
+      });
+
+      const result = recordDecisions(inputs);
+      res.json({ success: true, total: inputs.length, result });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // ---------- GET /v1/export ----------
+  // 导出决策。?format=json|csv&action=accept|reject|skip&batch=xxx&model=xxx
+  router.get("/export", (req: Request, res: Response) => {
+    try {
+      const format = (req.query.format as string) || "json";
+      const action = req.query.action as string | undefined;
+      const batchTag = req.query.batch as string | undefined;
+      const model = req.query.model as string | undefined;
+
+      let records: any[];
+      if (action && ["accept", "reject", "skip"].includes(action)) {
+        records = getDecisionsByAction(action as "accept" | "reject" | "skip");
+      } else if (batchTag) {
+        records = getDecisionsByBatchTag(batchTag);
+      } else if (model) {
+        records = getDecisionsByModel(model);
+      } else {
+        // Get all — use getDecisionsByAction as a full table scan workaround
+        // or use a dedicated getAllDecisions if available
+        records = getDecisionsByAction("accept")
+          .concat(getDecisionsByAction("reject"))
+          .concat(getDecisionsByAction("skip"));
+      }
+
+      if (format === "csv") {
+        const header = "seed,prompt,action,model,note,batch_tag,created_at\n";
+        const rows = records.map((r) =>
+          [
+            r.seed,
+            `"${(r.prompt || "").replace(/"/g, '""')}"`,
+            r.action,
+            `"${(r.model || "").replace(/"/g, '""')}"`,
+            `"${(r.note || "").replace(/"/g, '""')}"`,
+            `"${(r.batchTag || "").replace(/"/g, '""')}"`,
+            r.createdAt,
+          ].join(",")
+        ).join("\n");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="brella-export-${Date.now()}.csv"`);
+        return res.send(header + rows);
+      }
+
+      res.json({ total: records.length, records });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // ---------- GET /v1/stats/by-batch ----------
+  // 按批次统计 — 复用 listBatchTags() 已提供的聚合数据
+  router.get("/stats/by-batch", (_req: Request, res: Response) => {
+    try {
+      const batches = listBatchTags();
+      res.json({ batches, total: batches.length });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // ---------- GET /v1/stats/models ----------
+  // 按模型聚合的 Wilson 排名，可选 ?prompt=XXX 过滤到某个目录
+  router.get("/stats/models", (req: Request, res: Response) => {
+    try {
+      const prompt = req.query.prompt as string | undefined;
+      const rankings = getModelRankings(prompt || undefined);
+      res.json({ rankings, total: rankings.length });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });

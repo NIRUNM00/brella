@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brella Dashboard</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --surface: #151b23;
+    --surface-hover: #1c2532;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #848d97;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --gold: #d29922;
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  /* ---- Header ---- */
+  .header {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  .header h1 {
+    font-size: 24px; font-weight: 700; letter-spacing: -0.3px;
+  }
+  .header h1 span { color: var(--accent); }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;
+  }
+  .status.ok {
+    background: rgba(63,185,80,0.12); color: var(--green);
+    border: 1px solid rgba(63,185,80,0.3);
+  }
+  .status.err {
+    background: rgba(248,81,73,0.12); color: var(--red);
+    border: 1px solid rgba(248,81,73,0.3);
+  }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status.ok .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status.err .dot { background: var(--red); }
+  .version { color: var(--text-muted); font-size: 13px; }
+  .header-meta { margin-left: auto; display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: 12px; }
+  .header-meta .refresh-btn {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-muted); padding: 4px 12px; border-radius: 6px;
+    cursor: pointer; font-size: 12px; transition: 0.2s;
+  }
+  .header-meta .refresh-btn:hover { background: var(--surface-hover); color: var(--text); }
+  .header-meta .refresh-spin { display: inline-block; animation: spin 1s linear infinite; margin-right: 4px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- Metric Cards ---- */
+  .cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--accent); }
+  .card .label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .card .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+  .card .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ---- Latest Batch Banner ---- */
+  .latest-batch {
+    background: linear-gradient(135deg, rgba(88,166,255,0.08), rgba(88,166,255,0.02));
+    border: 1px solid rgba(88,166,255,0.25);
+    border-radius: var(--radius); padding: 14px 18px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .latest-batch .label { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .latest-batch .batch-name { font-size: 16px; font-weight: 600; }
+  .latest-batch .batch-stats { display: flex; gap: 16px; margin-left: auto; font-size: 13px; }
+  .latest-batch .batch-stats span { display: flex; align-items: center; gap: 4px; }
+
+  /* ---- Tabs ---- */
+  .tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 0;
+  }
+  .tab {
+    padding: 10px 20px; cursor: pointer; font-size: 13px; font-weight: 500;
+    color: var(--text-muted); border-bottom: 2px solid transparent;
+    transition: 0.15s; user-select: none;
+  }
+  .tab:hover { color: var(--text); background: rgba(255,255,255,0.02); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .tab-badge {
+    display: inline-block; margin-left: 4px;
+    background: var(--border); color: var(--text-muted);
+    font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600;
+  }
+  .tab.active .tab-badge { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .tab-content { display: none; animation: fadeIn 0.25s ease; }
+  .tab-content.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ---- Panels ---- */
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 16px; overflow: hidden;
+    margin-top: 12px;
+  }
+  .panel-title {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+  }
+  .panel-title .badge {
+    background: rgba(88,166,255,0.15); color: var(--accent);
+    font-size: 11px; padding: 0 7px; border-radius: 10px; font-weight: 600;
+  }
+  .panel-body { padding: 12px 16px; overflow-x: auto; }
+
+  /* ---- Tables ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(88,166,255,0.04); }
+
+  /* ---- Bar Visualizations ---- */
+  .bar-cell { display: flex; align-items: center; gap: 8px; }
+  .bar {
+    height: 6px; border-radius: 3px; background: var(--border); flex: 1; min-width: 40px; overflow: hidden;
+  }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+  .bar-fill.green { background: linear-gradient(90deg, var(--green), #5ae07a); }
+  .bar-fill.red { background: linear-gradient(90deg, var(--red), #f8716a); }
+  .bar-fill.gold { background: linear-gradient(90deg, var(--gold), #e3b341); }
+  .bar-fill.blue { background: linear-gradient(90deg, var(--accent), #79b8ff); }
+
+  /* ---- Tags ---- */
+  .tag {
+    display: inline-block; padding: 1px 7px; font-size: 11px; border-radius: 12px; font-weight: 500;
+  }
+  .tag.accept { background: rgba(63,185,80,0.12); color: var(--green); }
+  .tag.reject { background: rgba(248,81,73,0.12); color: var(--red); }
+  .tag.skip { background: rgba(132,141,151,0.12); color: var(--text-muted); }
+
+  /* ---- Search ---- */
+  .search-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .search-row input, .search-row select, .search-row button {
+    padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px;
+  }
+  .search-row button {
+    background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: 500;
+  }
+  .search-row button:hover { filter: brightness(1.1); }
+  .search-row input:focus, .search-row select:focus { outline: none; border-color: var(--accent); }
+
+  /* ---- Grid ---- */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* ---- States ---- */
+  .loading {
+    text-align: center; padding: 40px; color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .loading::before {
+    content: ''; width: 18px; height: 18px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  .error { color: var(--red); padding: 12px; }
+  .empty { color: var(--text-muted); padding: 16px; text-align: center; }
+
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  .highlight { color: var(--gold); font-weight: 600; }
+  .mono { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+
+  /* ---- Model Chart ---- */
+  .model-chart { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+  .model-row { display: flex; align-items: center; gap: 12px; }
+  .model-name { width: 100px; font-size: 13px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+  .model-bar { flex: 1; height: 24px; background: var(--border); border-radius: 6px; overflow: hidden; position: relative; }
+  .model-bar-fill {
+    height: 100%; border-radius: 6px;
+    display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+    font-size: 11px; font-weight: 700; color: #fff;
+    transition: width 0.7s ease;
+  }
+  .model-pct { width: 50px; text-align: right; font-size: 13px; font-weight: 600; }
+
+  /* ---- mini sparkline summary area ---- */
+  .summary-row {
+    display: flex; gap: 20px; flex-wrap: wrap;
+    padding: 8px 0;
+  }
+  .summary-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px;
+  }
+  .summary-item .dot-small {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  }
+
+  /* ---- scrollable tables ---- */
+  .table-wrap { overflow-x: auto; }
+
+  @media (max-width: 600px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 20px; }
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .card .value { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🌂 <span>Brella</span></h1>
+  <span class="status" id="statusBadge"><span class="dot"></span> 检查中...</span>
+  <span class="version" id="versionLabel">v-</span>
+  <div class="header-meta">
+    <span id="updateTime"></span>
+    <button class="refresh-btn" onclick="manualRefresh()">⟳ 刷新</button>
+  </div>
+</div>
+
+<!-- Metric Cards -->
+<div class="cards" id="metricCards">
+  <div class="card"><div class="label">总决策数</div><div class="value" id="mTotal">—</div></div>
+  <div class="card"><div class="label">✅ Accept</div><div class="value" id="mAccept">—</div><div class="sub" id="mAcceptPct"></div></div>
+  <div class="card"><div class="label">❌ Reject</div><div class="value" id="mReject">—</div><div class="sub" id="mRejectPct"></div></div>
+  <div class="card"><div class="label">⏭️ Skip</div><div class="value" id="mSkip">—</div></div>
+  <div class="card"><div class="label">📦 模型</div><div class="value" id="mModels">—</div></div>
+  <div class="card"><div class="label">🌱 种子</div><div class="value" id="mSeeds">—</div></div>
+  <div class="card"><div class="label">📋 批次</div><div class="value" id="mBatches">—</div></div>
+</div>
+
+<!-- Latest Batch Banner -->
+<div class="latest-batch" id="latestBatch" style="display:none">
+  <div>
+    <div class="label">最新的批次</div>
+    <div class="batch-name" id="lbName">—</div>
+  </div>
+  <div class="batch-stats" id="lbStats"></div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs" id="tabs">
+  <div class="tab active" data-tab="leaderboard">🏆 排行榜 <span class="tab-badge" id="lbCount">0</span></div>
+  <div class="tab" data-tab="models">📊 模型对比 <span class="tab-badge" id="modelCount">0</span></div>
+  <div class="tab" data-tab="batches">📋 批次明细 <span class="tab-badge" id="batchCount">0</span></div>
+  <div class="tab" data-tab="search">🔍 搜索</div>
+</div>
+
+<!-- Tab: Leaderboard -->
+<div class="tab-content active" id="tab-leaderboard">
+  <div class="panel">
+    <div class="panel-title">
+      Wilson Score 排行
+      <span class="badge" id="lbCount2">0</span>
+    </div>
+    <div class="panel-body">
+      <div class="summary-row" id="lbSummary"></div>
+      <div class="table-wrap" id="lbBody"><div class="loading">加载中...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab: Model Comparison -->
+<div class="tab-content" id="tab-models">
+  <div class="panel">
+    <div class="panel-title">模型采纳率排名</div>
+    <div class="panel-body" id="modelBody"><div class="loading">加载中...</div></div>
+  </div>
+</div>
+
+<!-- Tab: Batch Details -->
+<div class="tab-content" id="tab-batches">
+  <div class="panel">
+    <div class="panel-title">各批次统计</div>
+    <div class="panel-body">
+      <div class="table-wrap" id="batchBody"><div class="loading">加载中...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab: Search -->
+<div class="tab-content" id="tab-search">
+  <div class="panel">
+    <div class="panel-title">决策历史查询</div>
+    <div class="panel-body">
+      <div class="search-row">
+        <input type="number" id="searchSeed" placeholder="Seed 号" style="width:120px">
+        <input type="text" id="searchPrompt" placeholder="Prompt（可选）" style="width:200px">
+        <button onclick="searchHistory()">查询</button>
+      </div>
+      <div class="table-wrap" id="searchResults"><div class="empty">输入 seed 号查看决策历史</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = '/v1';
+let allStats = [];
+let allHistory = [];
+let refreshTimer = null;
+const REFRESH_INTERVAL = 30000; // 30s
+
+// ---- Tab switching ----
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    const content = document.getElementById('tab-' + tab.dataset.tab);
+    content.classList.add('active');
+    // Reset animation by re-adding
+    content.style.animation = 'none';
+    content.offsetHeight; // trigger reflow
+    content.style.animation = '';
+  });
+});
+
+// ---- API helpers ----
+async function api(path) {
+  const resp = await fetch(BASE + path);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
+// ---- Formatting ----
+function pct(v) { return (v * 100).toFixed(1) + '%'; }
+function wilsonBar(score) {
+  const w = Math.min((score * 100).toFixed(0), 100);
+  const color = score >= 0.5 ? 'green' : score >= 0.2 ? 'gold' : 'red';
+  return `<div class="bar-cell"><div class="bar"><div class="bar-fill ${color}" style="width:${w}%"></div></div><span class="num mono" style="width:56px">${pct(score)}</span></div>`;
+}
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const ms = Date.now() - new Date(dateStr).getTime();
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return sec + '秒前';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + '分钟前';
+  return Math.floor(min / 60) + '小时前';
+}
+
+// ---- Main Load ----
+async function loadDashboard() {
+  document.getElementById('updateTime').innerHTML = '⟳ 更新中...';
+  try {
+    // Health check
+    const health = await api('/health');
+    const badge = document.getElementById('statusBadge');
+    badge.className = 'status ok';
+    badge.innerHTML = '<span class="dot"></span> 运行中';
+    document.getElementById('versionLabel').textContent = 'v' + health.version;
+
+    // Load: stats + history + batches in parallel
+    const [statsData, historyData, batchesData] = await Promise.all([
+      api('/stats?limit=100'),
+      api('/history?limit=500').catch(() => ({ history: [] })),
+      api('/batches').catch(() => ({ batches: [] }))
+    ]);
+
+    const items = statsData.rankings || [];
+    allStats = items;
+    allHistory = historyData.history || [];
+    const batches = batchesData.batches || [];
+
+    // Compute metrics
+    let totalAccept = 0, totalReject = 0, totalSkip = 0;
+    const seedSet = new Set(), modelSet = new Set();
+
+    // From wilson_scores
+    items.forEach(r => {
+      totalAccept += r.ups || 0;
+      totalReject += r.downs || 0;
+      if (r.seed) seedSet.add(r.seed);
+      if (r.model) modelSet.add(r.model);
+    });
+
+    // Skip count from history
+    totalSkip = (allHistory.filter(h => h.action === 'skip') || []).length;
+    const totalDecisions = totalAccept + totalReject + totalSkip;
+
+    // Display metrics
+    document.getElementById('mTotal').textContent = totalDecisions;
+    document.getElementById('mAccept').textContent = totalAccept;
+    document.getElementById('mReject').textContent = totalReject;
+    document.getElementById('mSkip').textContent = totalSkip;
+    const rated = totalAccept + totalReject;
+    if (rated > 0) {
+      document.getElementById('mAcceptPct').textContent = totalAccept + ' / ' + rated + ' (' + pct(totalAccept / rated) + ')';
+      document.getElementById('mRejectPct').textContent = totalReject + ' / ' + rated + ' (' + pct(totalReject / rated) + ')';
+    }
+    document.getElementById('mModels').textContent = modelSet.size;
+    document.getElementById('mSeeds').textContent = seedSet.size;
+    document.getElementById('mBatches').textContent = batches.length;
+
+    // Tab badge counts
+    document.getElementById('lbCount').textContent = items.length;
+    document.getElementById('lbCount2').textContent = items.length;
+    document.getElementById('modelCount').textContent = modelSet.size;
+    document.getElementById('batchCount').textContent = batches.length;
+
+    // Latest batch banner
+    renderLatestBatch(batches, items);
+    // Leaderboard
+    renderLeaderboard(items);
+    // Model comparison
+    renderModels(items);
+    // Batch table
+    renderBatches(batches, items);
+
+    // Update time
+    document.getElementById('updateTime').innerHTML = '⏱ ' + new Date().toLocaleTimeString();
+
+  } catch (err) {
+    document.getElementById('statusBadge').className = 'status err';
+    document.getElementById('statusBadge').innerHTML = '<span class="dot"></span> 连接失败';
+    ['lbBody','modelBody','batchBody'].forEach(id => {
+      document.getElementById(id).innerHTML = `<div class="error">❌ ${err.message}</div>`;
+    });
+    document.getElementById('updateTime').innerHTML = '❌ 更新失败';
+  }
+}
+
+// ---- Latest Batch ----
+function renderLatestBatch(batches, items) {
+  const el = document.getElementById('latestBatch');
+  if (!batches.length) { el.style.display = 'none'; return; }
+
+  const latest = batches[batches.length - 1];
+  el.style.display = 'flex';
+  document.getElementById('lbName').textContent = latest.batchTag;
+
+  // Compute batch stats from items
+  let accept = 0, reject = 0, seeds = new Set();
+  items.forEach(r => {
+    if (r.batch_tag === latest.batchTag) {
+      accept += r.ups || 0;
+      reject += r.downs || 0;
+      if (r.seed) seeds.add(r.seed);
+    }
+  });
+  const rate = (accept + reject) > 0 ? pct(accept / (accept + reject)) : '—';
+  document.getElementById('lbStats').innerHTML = `
+    <span>✅ ${accept}</span>
+    <span>❌ ${reject}</span>
+    <span>🌱 ${seeds.size} 种子</span>
+    <span style="color:var(--accent);font-weight:600">${rate}</span>
+  `;
+}
+
+// ---- Wilson Leaderboard ----
+function renderLeaderboard(items) {
+  const sorted = [...items].sort((a, b) => (b.wilson_score || 0) - (a.wilson_score || 0)).slice(0, 50);
+  if (!sorted.length) {
+    document.getElementById('lbBody').innerHTML = '<div class="empty">暂无数据</div>';
+    document.getElementById('lbSummary').innerHTML = '';
+    return;
+  }
+
+  // Summary line
+  const avg = sorted.reduce((s, r) => s + (r.wilson_score || 0), 0) / sorted.length;
+  const high = sorted[0].wilson_score || 0;
+  const low = sorted[sorted.length - 1].wilson_score || 0;
+  document.getElementById('lbSummary').innerHTML = `
+    <div class="summary-item"><span class="dot-small" style="background:var(--green)"></span> 最高 ${pct(high)}</div>
+    <div class="summary-item"><span class="dot-small" style="background:var(--gold)"></span> 平均 ${pct(avg)}</div>
+    <div class="summary-item"><span class="dot-small" style="background:var(--red)"></span> 最低 ${pct(low)}</div>
+  `;
+
+  let html = `<table>
+    <thead><tr><th>#</th><th>Seed</th><th>Prompt</th><th>模型</th><th>Wilson Score</th><th>↑</th><th>↓</th><th>评分</th></tr></thead><tbody>`;
+  sorted.forEach((r, i) => {
+    const score = r.wilson_score || 0;
+    const prompt = r.prompt ? r.prompt.substring(0, 35) : '—';
+    const rated = (r.ups || 0) + (r.downs || 0);
+    const rating = rated > 0 ? (r.ups / rated * 100).toFixed(0) + '%' : '—';
+    html += `<tr>
+      <td>${i + 1}</td>
+      <td class="num highlight mono">${r.seed}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(prompt)}</td>
+      <td>${r.model || '—'}</td>
+      <td style="min-width:170px">${wilsonBar(score)}</td>
+      <td class="num" style="color:var(--green)">${r.ups || 0}</td>
+      <td class="num" style="color:var(--red)">${r.downs || 0}</td>
+      <td class="num mono">${rating}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('lbBody').innerHTML = html;
+}
+
+// ---- Model Comparison ----
+function renderModels(items) {
+  const modelMap = {};
+  items.forEach(r => {
+    const m = r.model || '(未指定)';
+    if (!modelMap[m]) modelMap[m] = { accept: 0, reject: 0, seeds: new Set() };
+    modelMap[m].accept += r.ups || 0;
+    modelMap[m].reject += r.downs || 0;
+    modelMap[m].seeds.add(r.seed);
+  });
+
+  const entries = Object.entries(modelMap)
+    .filter(e => e[1].accept + e[1].reject > 0)
+    .sort((a, b) => {
+      const rateA = a[1].accept / (a[1].accept + a[1].reject);
+      const rateB = b[1].accept / (b[1].accept + b[1].reject);
+      return rateB - rateA;
+    });
+
+  if (!entries.length) {
+    document.getElementById('modelBody').innerHTML = '<div class="empty">暂无有效数据（需要 accept/reject 记录）</div>';
+    return;
+  }
+
+  const maxRate = Math.max(...entries.map(e => e[1].accept / (e[1].accept + e[1].reject)), 0.01);
+
+  let html = '<div class="model-chart">';
+  entries.forEach(([name, data]) => {
+    const total = data.accept + data.reject;
+    const rate = total > 0 ? data.accept / total : 0;
+    const barW = (rate / maxRate * 100).toFixed(1);
+    const color = rate >= 0.7 ? 'var(--green)' : rate >= 0.4 ? 'var(--gold)' : 'var(--red)';
+
+    html += `<div class="model-row">
+      <div class="model-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+      <div class="model-bar">
+        <div class="model-bar-fill" style="width:${barW}%;background:${color}">
+          ${rate > 0.05 ? pct(rate) : ''}
+        </div>
+      </div>
+      <div class="model-pct">${pct(rate)}</div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin:-6px 0 4px 112px">
+      ✅ ${data.accept} / ❌ ${data.reject} / ${data.seeds.size} 种子
+    </div>`;
+  });
+  html += '</div>';
+  document.getElementById('modelBody').innerHTML = html;
+}
+
+// ---- Batch Details ----
+function renderBatches(batches, items) {
+  if (!batches.length) {
+    document.getElementById('batchBody').innerHTML = '<div class="empty">暂无批次记录</div>';
+    return;
+  }
+
+  const batchMap = {};
+  batches.forEach(b => {
+    batchMap[b.batchTag] = { accept: 0, reject: 0, skip: 0, seeds: new Set(), models: new Set() };
+  });
+  items.forEach(r => {
+    const tag = r.batch_tag || '(无批次)';
+    if (!batchMap[tag]) batchMap[tag] = { accept: 0, reject: 0, skip: 0, seeds: new Set(), models: new Set() };
+    batchMap[tag].accept += r.ups || 0;
+    batchMap[tag].reject += r.downs || 0;
+    if (r.seed) batchMap[tag].seeds.add(r.seed);
+    if (r.model) batchMap[tag].models.add(r.model);
+  });
+  // Also add skip counts from history to batchMap
+  allHistory.forEach(h => {
+    if (h.action !== 'skip') return;
+    const tag = h.batch_tag || '(无批次)';
+    if (!batchMap[tag]) batchMap[tag] = { accept: 0, reject: 0, skip: 0, seeds: new Set(), models: new Set() };
+    batchMap[tag].skip++;
+  });
+
+  // Reverse order (latest first)
+  const reversed = [...batches].reverse();
+
+  let html = `<table>
+    <thead><tr><th>批次</th><th>✅ Accept</th><th>❌ Reject</th><th>⏭️ Skip</th><th>种子数</th><th>模型数</th><th>采纳率</th></tr></thead><tbody>`;
+  reversed.forEach(b => {
+    const d = batchMap[b.batchTag] || { accept: 0, reject: 0, skip: 0, seeds: new Set(), models: new Set() };
+    const total = d.accept + d.reject;
+    const rate = total > 0 ? pct(d.accept / total) : '—';
+    html += `<tr>
+      <td><strong>${escapeHtml(b.batchTag)}</strong></td>
+      <td class="num" style="color:var(--green)">${d.accept}</td>
+      <td class="num" style="color:var(--red)">${d.reject}</td>
+      <td class="num" style="color:var(--text-muted)">${d.skip || 0}</td>
+      <td class="num">${d.seeds.size}</td>
+      <td class="num">${d.models.size}</td>
+      <td class="num mono">${rate}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('batchBody').innerHTML = html;
+}
+
+// ---- Search ----
+async function searchHistory() {
+  const seed = document.getElementById('searchSeed').value;
+  if (!seed) {
+    document.getElementById('searchResults').innerHTML = '<div class="empty">请输入 seed 号</div>';
+    return;
+  }
+
+  const prompt = document.getElementById('searchPrompt').value.trim();
+  let url = `/v1/history?seed=${seed}`;
+  if (prompt) url += `&prompt=${encodeURIComponent(prompt)}`;
+
+  document.getElementById('searchResults').innerHTML = '<div class="loading">查询中...</div>';
+
+  try {
+    const data = await fetch(url).then(r => r.json());
+    const history = data.history || [];
+    if (!history.length) {
+      document.getElementById('searchResults').innerHTML = '<div class="empty">未找到该 seed 的决策记录</div>';
+      return;
+    }
+
+    let html = `<table>
+      <thead><tr><th>时间</th><th>Seed</th><th>Prompt</th><th>决策</th><th>模型</th><th>批次</th><th>备注</th></tr></thead><tbody>`;
+    history.forEach(h => {
+      const time = h.created_at ? new Date(h.created_at).toLocaleString() : '—';
+      const actionTag = h.action === 'accept' ? '<span class="tag accept">✅ Accept</span>'
+        : h.action === 'reject' ? '<span class="tag reject">❌ Reject</span>'
+        : '<span class="tag skip">⏭️ Skip</span>';
+      html += `<tr>
+        <td style="font-size:11px">${time}</td>
+        <td class="num highlight mono">${h.seed}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${escapeHtml((h.prompt || '').substring(0, 40))}</td>
+        <td>${actionTag}</td>
+        <td>${h.model || '—'}</td>
+        <td>${escapeHtml(h.batch_tag || '—')}</td>
+        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(h.note || '')}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('searchResults').innerHTML = html;
+  } catch (err) {
+    document.getElementById('searchResults').innerHTML = `<div class="error">❌ ${err.message}</div>`;
+  }
+}
+
+// ---- Manual Refresh ----
+function manualRefresh() {
+  loadDashboard();
+}
+
+// ---- Auto Refresh ----
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(loadDashboard, REFRESH_INTERVAL);
+}
+
+// ---- Utils ----
+function escapeHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+// ---- Enter key on search ----
+document.getElementById('searchSeed').addEventListener('keydown', e => { if (e.key === 'Enter') searchHistory(); });
+document.getElementById('searchPrompt').addEventListener('keydown', e => { if (e.key === 'Enter') searchHistory(); });
+
+// ---- Init ----
+loadDashboard();
+startAutoRefresh();
+</script>
+</body>
+</html>
